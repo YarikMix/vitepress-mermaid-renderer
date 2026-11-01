@@ -98,10 +98,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Cringe-Driven-Development-Team/vitepress-mermaid-renderer.git"
+    "url": "https://github.com/YarikMix/vitepress-mermaid-renderer.git"
   },
   "bugs": {
-    "url": "https://github.com/Cringe-Driven-Development-Team/vitepress-mermaid-renderer/issues"
+    "url": "https://github.com/YarikMix/vitepress-mermaid-renderer/issues"
   },
   "homepage": "https://vitepress-mermaid-renderer.vercel.app",
   "engines": {
