@@ -90,6 +90,8 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+# CDD installs the built package directly from an immutable Git commit.
+!/dist/
 
 # Gatsby files
 .cache/

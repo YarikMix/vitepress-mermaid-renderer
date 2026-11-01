@@ -796,9 +796,12 @@ const unregisterFullscreenChangeListener = () => {
 onMounted(async () => {
   try {
     await nextTick();
+    if (instance?.isUnmounted) return;
     await renderMermaidDiagram(diagramId, props.code);
+    if (instance?.isUnmounted) return;
     updateTransformOrigin();
     await applyFittedView();
+    if (instance?.isUnmounted) return;
     const initialBounds = diagramWrapper.value?.getBoundingClientRect();
     if (initialBounds && initialBounds.width > 0 && initialBounds.height > 0) {
       lastObservedWidth = initialBounds.width;

@@ -248,6 +248,7 @@ export function useMermaidRenderer(
 
   /** Handle for the component-scoped retry timeout, cleared on unmount. */
   let retryTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  let disposed = false;
 
   /**
    * Sensible default Mermaid configuration used as the base layer.
@@ -523,6 +524,7 @@ export function useMermaidRenderer(
     retryCount = 0,
     maxRetries = 3,
   ): Promise<void> => {
+    if (disposed) return;
     try {
       let element = document.getElementById(id);
       if (!element) {
@@ -539,27 +541,27 @@ export function useMermaidRenderer(
       }
 
       lastRenderContext.value = { id, code };
-      const beforeRender = options.onBeforeRender?.({ id, code });
-      if (beforeRender) {
-        await beforeRender;
-      }
-
-      element.textContent = code;
-      element.removeAttribute('data-processed');
-      renderError.value = false;
-      renderErrorDetails.value = '';
-      isRendered.value = false;
-
-      // Add a class to indicate rendering is in progress
-      element.classList.add('mermaid-rendering');
-
       await enqueueMermaidRender(async () => {
+        if (disposed || !element.isConnected) return;
         try {
+          const beforeRender = options.onBeforeRender?.({ id, code });
+          if (beforeRender) await beforeRender;
           await registerExternalDiagrams(code);
+          if (disposed || !element.isConnected) return;
+
+          // Each queued run needs source text, never SVG produced by a preceding run.
+          element.textContent = code;
+          element.removeAttribute('data-processed');
+          renderError.value = false;
+          renderErrorDetails.value = '';
+          isRendered.value = false;
+          element.classList.add('mermaid-rendering');
           await mermaid.run({
             nodes: [element],
             suppressErrors: false,
           });
+
+          if (disposed || !element.isConnected) return;
 
           // Wait for the browser to paint the SVG before measuring sizes.
           await waitForPaint();
@@ -631,6 +633,7 @@ export function useMermaidRenderer(
           // Emit an event when rendering is complete
           options.onRenderComplete?.({ id, success: true });
         } catch (error) {
+          if (disposed) return;
           console.error('Failed to render mermaid diagram:', error);
           renderError.value = true;
           renderErrorDetails.value =
@@ -655,6 +658,7 @@ export function useMermaidRenderer(
         }
       });
     } catch (error) {
+      if (disposed) return;
       console.error('Error in diagram initialization:', error);
       renderError.value = true;
       renderErrorDetails.value =
@@ -680,6 +684,7 @@ export function useMermaidRenderer(
   });
 
   onUnmounted(() => {
+    disposed = true;
     if (retryTimeoutHandle) {
       clearTimeout(retryTimeoutHandle);
       retryTimeoutHandle = null;

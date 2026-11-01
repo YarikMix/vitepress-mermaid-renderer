@@ -32,7 +32,6 @@
 import { h, render } from 'vue';
 import MermaidDiagram from './MermaidDiagram.vue';
 import { MermaidConfig } from 'mermaid';
-import { resetRenderPipeline } from './composables/useMermaidRenderer';
 import {
   resolveToolbarConfig,
   type MermaidToolbarOptions,
@@ -96,6 +95,8 @@ export class MermaidRenderer {
 
   /** Guards against re-running the {@link initialize} lifecycle. */
   private initialized = false;
+  private destroyed = false;
+  private mountedDiagrams = new Set<HTMLElement>();
 
   /** Counter tracking how many retry iterations have been attempted in the current render pass. */
   private renderAttempts = 0;
@@ -212,6 +213,10 @@ export class MermaidRenderer {
    * {@link MermaidRenderer.resetInstance}.
    */
   private destroy(): void {
+    this.destroyed = true;
+    this.renderQueue = [];
+    for (const wrapper of this.mountedDiagrams) render(null, wrapper);
+    this.mountedDiagrams.clear();
     if (this.mutationObserver) {
       this.mutationObserver.disconnect();
       this.mutationObserver = null;
@@ -510,7 +515,8 @@ export class MermaidRenderer {
    */
   private async renderMermaidDiagram(element: HTMLPreElement): Promise<void> {
     try {
-      if (!element || !element.parentNode) return;
+      if (this.destroyed || !element?.isConnected || !element.parentNode)
+        return;
       const code = element.textContent?.trim() || '';
       const wrapper = this.createMermaidWrapper(code);
       if (!wrapper) return;
@@ -531,6 +537,8 @@ export class MermaidRenderer {
         }),
         wrapper,
       );
+
+      this.mountedDiagrams.add(wrapper);
 
       // Wait for the browser's next repaint cycle so the SVG is
       // visually settled. Two consecutive animation frames give
@@ -679,6 +687,7 @@ export class MermaidRenderer {
    * class changes on existing elements do **not** fire the callback.
    */
   private setupDomMutationObserver(): void {
+    if (this.destroyed) return;
     if (
       typeof window === 'undefined' ||
       typeof MutationObserver === 'undefined' ||
@@ -700,6 +709,12 @@ export class MermaidRenderer {
 
     let rerenderScheduled = false;
     this.mutationObserver = new MutationObserver((mutations) => {
+      for (const wrapper of this.mountedDiagrams) {
+        if (!wrapper.isConnected) {
+          render(null, wrapper);
+          this.mountedDiagrams.delete(wrapper);
+        }
+      }
       if (!this.hasNewMermaidNodes(mutations)) {
         return;
       }
@@ -826,10 +841,6 @@ export class MermaidRenderer {
     this.renderAttempts = 0;
     this.initialPageRenderComplete = false;
 
-    // Reset the global render pipeline to prevent stale promise
-    // chains from previous pages from accumulating.
-    resetRenderPipeline();
-
     if (this.retryTimeout) {
       clearTimeout(this.retryTimeout);
       this.retryTimeout = null;
@@ -861,6 +872,7 @@ export class MermaidRenderer {
    * networks and heavy SSR hydration.
    */
   private renderWithRetry(): void {
+    if (this.destroyed) return;
     // First attempt to render
     const diagramsFound = this.renderMermaidDiagrams();
 

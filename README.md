@@ -1,3 +1,7 @@
+> YarikMix maintenance fork of [sametcn99/vitepress-mermaid-renderer](https://github.com/sametcn99/vitepress-mermaid-renderer), based on 1.2.3 (MIT).
+> Fixes SPA component disposal, late async mount callbacks, and serialized rendering across navigation/theme updates.
+> The public API and Mermaid 11/12 support are unchanged. Built `dist/` is committed so consumers can pin a Git SHA without building this package during installation.
+
 # VitePress Mermaid Renderer
 
 Transform static Mermaid diagrams into interactive visualizations in VitePress.
