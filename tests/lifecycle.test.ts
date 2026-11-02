@@ -39,6 +39,26 @@ const deferred = () => {
 };
 
 describe('SPA diagram lifecycle', () => {
+  const eventPage = (count = 1) => {
+    document.body.innerHTML = `<div id="app">${`<div class="language-mermaid"><pre>${code}</pre></div>`.repeat(count)}</div>`;
+    const page = document.getElementById('app')!;
+    const events: {
+      target: Element;
+      detail: { id: string; success: boolean; error?: unknown };
+      svg: boolean;
+    }[] = [];
+    page.addEventListener('vitepress-mermaid:render-complete', (event) => {
+      const target = event.target as Element;
+      events.push({
+        target,
+        detail: (event as CustomEvent).detail,
+        svg: !!target.querySelector('svg'),
+      });
+    });
+    const renderer = MermaidRenderer.getInstance({ static: true });
+    return { page, events, renderer };
+  };
+
   beforeEach(() => {
     vi.useFakeTimers();
     resetRenderPipeline();
@@ -65,6 +85,79 @@ describe('SPA diagram lifecycle', () => {
     }
     _resetFullscreenManager();
     vi.useRealTimers();
+  });
+
+  it('staticSuccessEvent delivers a ready SVG to the parent', async () => {
+    const { events } = eventPage();
+    await flush();
+    expect(events).toHaveLength(1);
+    expect(events[0]!.target.matches('.mermaid-wrapper')).toBe(true);
+    expect(events[0]!.detail.success).toBe(true);
+    expect(events[0]!.detail.id).toBeTruthy();
+    expect(events[0]!.svg).toBe(true);
+  });
+
+  it('staticFailureThenRecovery delivers the error and a later successful attempt', async () => {
+    const error = new Error('invalid graph');
+    mermaid.run.mockRejectedValue(error);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { events, renderer } = eventPage();
+    await flush();
+    expect(events.length).toBeGreaterThan(0);
+    expect(
+      events.every(
+        (event) => !event.detail.success && event.detail.error === error,
+      ),
+    ).toBe(true);
+    mermaid.run.mockImplementation(async ({ nodes }: { nodes: Element[] }) => {
+      nodes[0]!.innerHTML = '<svg><text>recovered</text></svg>';
+    });
+    renderer.setConfig({ theme: 'dark' });
+    await flush();
+    expect(events.at(-1)!.detail.success).toBe(true);
+    expect(events.at(-1)!.svg).toBe(true);
+  });
+
+  it('eventsStayWithOwnWrapper for multiple static diagrams', async () => {
+    const { events } = eventPage(2);
+    await flush();
+    expect(events).toHaveLength(2);
+    expect(new Set(events.map((event) => event.target)).size).toBe(2);
+    expect(new Set(events.map((event) => event.detail.id)).size).toBe(2);
+    expect(
+      events.every((event) =>
+        event.target.querySelector(`[id="${event.detail.id}"]`),
+      ),
+    ).toBe(true);
+  });
+
+  it('themeRerenderEmitsAgain from the same wrapper', async () => {
+    const { events, renderer } = eventPage();
+    await flush();
+    renderer.setConfig({ theme: 'dark' });
+    await flush();
+    expect(events).toHaveLength(2);
+    expect(events[1]!.target).toBe(events[0]!.target);
+    expect(events[1]!.detail.id).toBe(events[0]!.detail.id);
+    expect(events[1]!.svg).toBe(true);
+  });
+
+  it('unmountDuringRenderEmitsNothing after pending work is released', async () => {
+    const gate = deferred();
+    mermaid.run.mockImplementationOnce(
+      async ({ nodes }: { nodes: Element[] }) => {
+        await gate.promise;
+        nodes[0]!.innerHTML = '<svg></svg>';
+      },
+    );
+    const { page, events } = eventPage();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(page.querySelector('.mermaid-wrapper')).not.toBeNull();
+    page.innerHTML = '';
+    await nextTick();
+    gate.resolve();
+    await flush();
+    expect(events).toHaveLength(0);
   });
 
   it('unmounts programmatic roots when their page is removed', async () => {

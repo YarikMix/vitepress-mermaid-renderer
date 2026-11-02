@@ -534,6 +534,19 @@ export class MermaidRenderer {
           config: this.config,
           toolbar: this.toolbarConfig,
           static: this.staticMode,
+          onRenderComplete: (detail: {
+            id: string;
+            success: boolean;
+            error?: unknown;
+          }) => {
+            if (this.destroyed || !wrapper.isConnected) return;
+            wrapper.dispatchEvent(
+              new CustomEvent('vitepress-mermaid:render-complete', {
+                bubbles: true,
+                detail,
+              }),
+            );
+          },
         }),
         wrapper,
       );
